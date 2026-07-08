@@ -1,39 +1,65 @@
 import boto3
 import json
 import glob
+import os
+import sys
 
+# -----------------------------
+# AWS Configuration
+# -----------------------------
 bucket = "employee-photo-demo-antara"
 
-# -----------------------------
-# Find first image automatically
-# -----------------------------
-images = []
-
-for ext in ("*.jpg", "*.jpeg", "*.png"):
-    images.extend(glob.glob(ext))
-
-if not images:
-    raise Exception("No image found!")
-
-image = images[0]
-
-print(f"Uploading {image}...")
-
+# AWS Clients
 s3 = boto3.client("s3")
 rekognition = boto3.client("rekognition")
 
-# Upload image
-s3.upload_file(image, bucket, image)
+# -----------------------------
+# Find newest image
+# -----------------------------
+extensions = [
+    "*.jpg",
+    "*.jpeg",
+    "*.png",
+    "*.webp"
+]
 
-print("Upload Successful")
+files = []
 
+for ext in extensions:
+    files.extend(glob.glob(f"images/{ext}"))
+
+if len(files) == 0:
+    print("No images found inside images folder.")
+    sys.exit(1)
+
+latest = max(files, key=os.path.getctime)
+
+original_filename = os.path.basename(latest)
+
+print(f"Image Selected: {original_filename}")
+
+# -----------------------------
+# Upload image to S3
+# -----------------------------
+print("Uploading image to S3...")
+
+s3.upload_file(
+    latest,
+    bucket,
+    "latest.jpg"
+)
+
+print("Upload Successful!")
+
+# -----------------------------
 # Detect Faces
+# -----------------------------
 response = rekognition.detect_faces(
 
     Image={
         "S3Object": {
             "Bucket": bucket,
-            "Name": image
+            "Name": "latest.jpg"
         }
     },
 
@@ -43,11 +69,12 @@ response = rekognition.detect_faces(
 
 faces = response["FaceDetails"]
 
-print()
-print("Image:", image)
-print("Number of Faces:", len(faces))
+print("-----------------------------------")
+print(f"Image: {original_filename}")
+print(f"Number of Faces: {len(faces)}")
+print("-----------------------------------")
 
-results = []
+face_data = []
 
 for i, face in enumerate(faces):
 
@@ -55,136 +82,38 @@ for i, face in enumerate(faces):
 
     print(f"Face {i+1} Confidence: {confidence}%")
 
-    results.append({
-
-        "face": i + 1,
-
+    face_data.append({
+        "face_number": i + 1,
         "confidence": confidence
-
     })
 
-# Save result.json
+# -----------------------------
+# Create JSON
+# -----------------------------
+result = {
 
-output = {
-
-    "image": image,
+    "image": original_filename,
 
     "number_of_faces": len(faces),
 
-    "faces": results
+    "faces": face_data
 
 }
 
 with open("result.json", "w") as f:
-    json.dump(output, f, indent=4)
+    json.dump(result, f, indent=4)
 
-print()
-print("result.json created successfully!")
+print("\nresult.json created successfully!")
 
 # -----------------------------
-# Create HTML Automatically
+# Upload result.json to S3
 # -----------------------------
-
-html = f"""
-
-<!DOCTYPE html>
-
-<html>
-
-<head>
-
-<meta charset="UTF-8">
-
-<title>Employee Face Detection</title>
-
-<style>
-
-body{{
-font-family:Arial;
-background:#f4f4f4;
-padding:40px;
-}}
-
-.container{{
-max-width:700px;
-margin:auto;
-background:white;
-padding:30px;
-border-radius:10px;
-box-shadow:0 0 10px gray;
-}}
-
-img{{
-width:300px;
-border-radius:10px;
-margin-bottom:20px;
-}}
-
-h1{{
-color:#0066cc;
-}}
-
-</style>
-
-</head>
-
-<body>
-
-<div class="container">
-
-<h1>Employee Face Detection Report</h1>
-
-<img src="{image}" width="300">
-
-<h3>Image:</h3>
-
-<p>{image}</p>
-
-<h3>Number of Faces:</h3>
-
-<p>{len(faces)}</p>
-
-<h3>Confidence:</h3>
-
-"""
-
-for face in results:
-
-    html += f"<p>Face {face['face']} Confidence : {face['confidence']}%</p>"
-
-html += """
-
-</div>
-
-</body>
-
-</html>
-
-"""
-
-with open("index.html", "w") as f:
-    f.write(html)
-
-print("index.html created!")
-
-# Upload Files
-
 s3.upload_file(
     "result.json",
     bucket,
-    "result.json",
-    ExtraArgs={"ContentType":"application/json"}
+    "result.json"
 )
 
-s3.upload_file(
-    "index.html",
-    bucket,
-    "index.html",
-    ExtraArgs={"ContentType":"text/html"}
-)
+print("result.json uploaded to S3!")
 
-print("index.html uploaded")
-print("result.json uploaded")
-
-print()
-print("Automation Completed Successfully!")
+print("\nWebsite Updated Successfully!")
