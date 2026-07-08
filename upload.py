@@ -1,63 +1,53 @@
 import boto3
 import json
 import glob
-import os
 
-# ===========================
-# AWS Clients
-# ===========================
-s3 = boto3.client("s3")
-rekognition = boto3.client("rekognition")
-
-# ===========================
-# Bucket Name
-# ===========================
 bucket = "employee-photo-demo-antara"
 
-# ===========================
-# Find any image automatically
-# ===========================
-extensions = ["*.jpg", "*.jpeg", "*.png"]
-
+# -----------------------------
+# Find first image automatically
+# -----------------------------
 images = []
 
-for ext in extensions:
+for ext in ("*.jpg", "*.jpeg", "*.png"):
     images.extend(glob.glob(ext))
 
 if not images:
-    raise Exception("No image found in repository!")
+    raise Exception("No image found!")
 
 image = images[0]
 
-print(f"\nUploading image: {image}")
+print(f"Uploading {image}...")
 
-# ===========================
-# Upload Image
-# ===========================
+s3 = boto3.client("s3")
+rekognition = boto3.client("rekognition")
+
+# Upload image
 s3.upload_file(image, bucket, image)
 
 print("Upload Successful")
 
-# ===========================
-# Rekognition
-# ===========================
+# Detect Faces
 response = rekognition.detect_faces(
+
     Image={
         "S3Object": {
             "Bucket": bucket,
             "Name": image
         }
     },
+
     Attributes=["ALL"]
+
 )
 
 faces = response["FaceDetails"]
 
-print("\n============================")
-print(f"Image: {image}")
-print(f"Number of Faces: {len(faces)}")
+print()
+print("Image:", image)
+print("Number of Faces:", len(faces))
 
-result = []
+results = []
 
 for i, face in enumerate(faces):
 
@@ -65,33 +55,45 @@ for i, face in enumerate(faces):
 
     print(f"Face {i+1} Confidence: {confidence}%")
 
-    result.append({
+    results.append({
+
         "face": i + 1,
+
         "confidence": confidence
+
     })
 
-# ===========================
-# Save JSON
-# ===========================
+# Save result.json
+
 output = {
+
     "image": image,
+
     "number_of_faces": len(faces),
-    "faces": result
+
+    "faces": results
+
 }
 
 with open("result.json", "w") as f:
     json.dump(output, f, indent=4)
 
-print("\nresult.json created successfully!")
+print()
+print("result.json created successfully!")
 
-# ===========================
-# Create HTML
-# ===========================
+# -----------------------------
+# Create HTML Automatically
+# -----------------------------
+
 html = f"""
+
 <!DOCTYPE html>
+
 <html>
 
 <head>
+
+<meta charset="UTF-8">
 
 <title>Employee Face Detection</title>
 
@@ -99,33 +101,27 @@ html = f"""
 
 body{{
 font-family:Arial;
-background:#f5f5f5;
+background:#f4f4f4;
 padding:40px;
 }}
 
 .container{{
+max-width:700px;
+margin:auto;
 background:white;
 padding:30px;
 border-radius:10px;
-width:700px;
-margin:auto;
-box-shadow:0 0 15px rgba(0,0,0,.2);
+box-shadow:0 0 10px gray;
 }}
 
 img{{
-width:350px;
-margin:20px 0;
+width:300px;
 border-radius:10px;
+margin-bottom:20px;
 }}
 
 h1{{
-color:#0b5394;
-}}
-
-pre{{
-background:#efefef;
-padding:15px;
-border-radius:8px;
+color:#0066cc;
 }}
 
 </style>
@@ -138,32 +134,32 @@ border-radius:8px;
 
 <h1>Employee Face Detection Report</h1>
 
-<h3>Latest Uploaded Image</h3>
+<img src="{image}" width="300">
 
-<img src="{image}">
+<h3>Image:</h3>
 
-<h3>Detection Logs</h3>
+<p>{image}</p>
 
-<pre>
-Image: {image}
+<h3>Number of Faces:</h3>
 
-Number of Faces: {len(faces)}
+<p>{len(faces)}</p>
+
+<h3>Confidence:</h3>
+
 """
 
-for i, face in enumerate(result):
-    html += f"Face {i+1} Confidence: {face['confidence']}%\n"
+for face in results:
+
+    html += f"<p>Face {face['face']} Confidence : {face['confidence']}%</p>"
 
 html += """
-
-result.json created successfully!
-
-</pre>
 
 </div>
 
 </body>
 
 </html>
+
 """
 
 with open("index.html", "w") as f:
@@ -171,24 +167,24 @@ with open("index.html", "w") as f:
 
 print("index.html created!")
 
-# ===========================
-# Upload Outputs
-# ===========================
-s3.upload_file(
-    "index.html",
-    bucket,
-    "index.html",
-    ExtraArgs={"ContentType": "text/html"}
-)
+# Upload Files
 
 s3.upload_file(
     "result.json",
     bucket,
     "result.json",
-    ExtraArgs={"ContentType": "application/json"}
+    ExtraArgs={"ContentType":"application/json"}
 )
 
-print("index.html uploaded to S3")
-print("result.json uploaded to S3")
+s3.upload_file(
+    "index.html",
+    bucket,
+    "index.html",
+    ExtraArgs={"ContentType":"text/html"}
+)
 
-print("\nAutomation Completed Successfully!")
+print("index.html uploaded")
+print("result.json uploaded")
+
+print()
+print("Automation Completed Successfully!")
