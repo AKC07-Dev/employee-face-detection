@@ -3,9 +3,7 @@ name: Face Detection
 on:
   push:
     paths:
-      - "*.jpg"
-      - "*.jpeg"
-      - "*.png"
+      - "images/**"
 
 jobs:
   detect:
